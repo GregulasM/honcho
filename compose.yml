@@ -1,0 +1,276 @@
+name: fabula-honcho
+
+x-honcho-environment: &honcho-environment
+  DB_CONNECTION_URI: postgresql+psycopg://fabula_honcho:${HONCHO_DB_PASSWORD:?Set HONCHO_DB_PASSWORD}@database:5432/fabula_honcho
+  CACHE_ENABLED: "true"
+  CACHE_URL: redis://redis:6379/0?suppress=true
+  LLM_OPENAI_API_KEY: ${NUXT_OPENROUTER_API_KEY:?Set NUXT_OPENROUTER_API_KEY}
+  AUTH_USE_AUTH: "true"
+  AUTH_JWT_SECRET: ${HONCHO_JWT_SECRET:?Set HONCHO_JWT_SECRET}
+
+configs:
+  honcho_config:
+    content: |
+      [app]
+      LOG_LEVEL = "INFO"
+      PERFORMANCE_LOG_FORMAT = "compact"
+      SESSION_OBSERVERS_LIMIT = 4
+      GET_CONTEXT_MAX_TOKENS = 12000
+      EMBED_MESSAGES = true
+      NAMESPACE = "fabula_honcho"
+
+      [auth]
+      USE_AUTH = true
+
+      [embedding]
+      VECTOR_DIMENSIONS = 1536
+      MAX_INPUT_TOKENS = 8192
+      MAX_TOKENS_PER_REQUEST = 300000
+
+      [embedding.model_config]
+      transport = "openai"
+      model = "openai/text-embedding-3-small"
+
+      [embedding.model_config.overrides]
+      base_url = "https://openrouter.ai/api/v1"
+
+      [deriver]
+      ENABLED = true
+      WORKERS = 2
+      FLUSH_ENABLED = true
+      DEDUPLICATE = true
+      LOG_OBSERVATIONS = false
+      WORKING_REPRESENTATION_MAX_OBSERVATIONS = 100
+
+      [deriver.model_config]
+      transport = "openai"
+      model = "qwen/qwen3.7-flash"
+
+      [deriver.model_config.overrides]
+      base_url = "https://openrouter.ai/api/v1"
+
+      [peer_card]
+      ENABLED = true
+
+      [dialectic]
+      MAX_OUTPUT_TOKENS = 4096
+      MAX_INPUT_TOKENS = 12000
+      HISTORY_TOKEN_LIMIT = 4096
+      SESSION_HISTORY_MAX_TOKENS = 4096
+
+      [dialectic.levels.minimal]
+      MAX_TOOL_ITERATIONS = 1
+      MAX_OUTPUT_TOKENS = 300
+      TOOL_CHOICE = "auto"
+
+      [dialectic.levels.minimal.model_config]
+      transport = "openai"
+      model = "inclusionai/ling-3.0-flash"
+
+      [dialectic.levels.minimal.model_config.overrides]
+      base_url = "https://openrouter.ai/api/v1"
+
+      [dialectic.levels.low]
+      MAX_TOOL_ITERATIONS = 3
+      TOOL_CHOICE = "auto"
+
+      [dialectic.levels.low.model_config]
+      transport = "openai"
+      model = "inclusionai/ling-3.0-flash"
+
+      [dialectic.levels.low.model_config.overrides]
+      base_url = "https://openrouter.ai/api/v1"
+
+      [dialectic.levels.medium]
+      MAX_TOOL_ITERATIONS = 3
+
+      [dialectic.levels.medium.model_config]
+      transport = "openai"
+      model = "inclusionai/ling-3.0-flash"
+
+      [dialectic.levels.medium.model_config.overrides]
+      base_url = "https://openrouter.ai/api/v1"
+
+      [dialectic.levels.high]
+      MAX_TOOL_ITERATIONS = 4
+
+      [dialectic.levels.high.model_config]
+      transport = "openai"
+      model = "inclusionai/ling-3.0-flash"
+
+      [dialectic.levels.high.model_config.overrides]
+      base_url = "https://openrouter.ai/api/v1"
+
+      [dialectic.levels.max]
+      MAX_TOOL_ITERATIONS = 6
+
+      [dialectic.levels.max.model_config]
+      transport = "openai"
+      model = "inclusionai/ling-3.0-flash"
+
+      [dialectic.levels.max.model_config.overrides]
+      base_url = "https://openrouter.ai/api/v1"
+
+      [summary]
+      ENABLED = true
+      MESSAGES_PER_SHORT_SUMMARY = 10
+      MESSAGES_PER_LONG_SUMMARY = 20
+      MAX_TOKENS_SHORT = 1000
+      MAX_TOKENS_LONG = 4000
+
+      [summary.model_config]
+      transport = "openai"
+      model = "qwen/qwen3.7-flash"
+
+      [summary.model_config.overrides]
+      base_url = "https://openrouter.ai/api/v1"
+
+      [dream]
+      ENABLED = true
+      DOCUMENT_THRESHOLD = 50
+      IDLE_TIMEOUT_MINUTES = 60
+      MIN_HOURS_BETWEEN_DREAMS = 8
+      ENABLED_TYPES = ["omni"]
+      MAX_TOOL_ITERATIONS = 12
+      HISTORY_TOKEN_LIMIT = 12000
+
+      [dream.deduction_model_config]
+      transport = "openai"
+      model = "inclusionai/ling-3.0-flash"
+
+      [dream.deduction_model_config.overrides]
+      base_url = "https://openrouter.ai/api/v1"
+
+      [dream.induction_model_config]
+      transport = "openai"
+      model = "qwen/qwen3.7-flash"
+
+      [dream.induction_model_config.overrides]
+      base_url = "https://openrouter.ai/api/v1"
+
+      [cache]
+      ENABLED = true
+      URL = "redis://redis:6379/0?suppress=true"
+      NAMESPACE = "fabula_honcho"
+      DEFAULT_TTL_SECONDS = 300
+      DEFAULT_LOCK_TTL_SECONDS = 5
+
+      [metrics]
+      ENABLED = false
+
+      [telemetry]
+      ENABLED = false
+
+      [sentry]
+      ENABLED = false
+
+      [vector_store]
+      TYPE = "pgvector"
+      MIGRATED = false
+      NAMESPACE = "fabula_honcho"
+  honcho_db_init:
+    content: |
+      CREATE EXTENSION IF NOT EXISTS vector;
+
+services:
+  api:
+    image: ghcr.io/plastic-labs/honcho:v3.0.11
+    entrypoint: ["sh", "docker/entrypoint.sh"]
+    environment: *honcho-environment
+    expose:
+      - "8000"
+    configs:
+      - source: honcho_config
+        target: /app/config.toml
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2).read()",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 240s
+    init: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  worker:
+    image: ghcr.io/plastic-labs/honcho:v3.0.11
+    entrypoint: ["/app/.venv/bin/python", "-m", "src.deriver"]
+    environment: *honcho-environment
+    configs:
+      - source: honcho_config
+        target: /app/config.toml
+    depends_on:
+      api:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import socket; s = socket.create_connection(('redis', 6379), 3); s.sendall(b'PING\\r\\n'); assert s.recv(16).startswith(b'+PONG')",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    init: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  database:
+    image: pgvector/pgvector:pg15
+    command: ["postgres", "-c", "max_connections=200"]
+    environment:
+      POSTGRES_DB: fabula_honcho
+      POSTGRES_USER: fabula_honcho
+      POSTGRES_PASSWORD: ${HONCHO_DB_PASSWORD:?Set HONCHO_DB_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    configs:
+      - source: honcho_db_init
+        target: /docker-entrypoint-initdb.d/init.sql
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fabula_honcho -d fabula_honcho"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:8.2
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redis-data:
