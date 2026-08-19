@@ -184,6 +184,7 @@ timing_logs.csv
 
 config.json
 config.toml
+!config.toml
 .aider*
 
 CRUSH.md
